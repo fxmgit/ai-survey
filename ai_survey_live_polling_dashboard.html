@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI System Design - Polling & Live Results</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        
+        .glass-card {
+            background: rgba(30, 41, 59, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .bg-mesh {
+            background-color: #090d16;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.1) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(99, 102, 241, 0.1) 0px, transparent 50%);
+        }
+
+        .bar-transition {
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="font-sans text-slate-100 bg-mesh min-h-full flex flex-col justify-between selection:bg-blue-500 selection:text-white antialiased">
+
+    <!-- Header / Navbar with View Switcher -->
+    <header class="w-full border-b border-slate-800/80 bg-slate-950/40 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
+                    <i data-lucide="bar-chart-3" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-base font-bold tracking-tight text-white sm:text-lg">AI & System Design Poll</h1>
+                </div>
+            </div>
+
+            <!-- View Toggle Buttons -->
+            <div class="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+                <button id="tab-vote" onclick="switchTab('vote')" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-blue-600 text-white shadow">
+                    <i data-lucide="vote" class="w-3.5 h-3.5"></i>
+                    <span>Vote Form</span>
+                </button>
+                <button id="tab-results" onclick="switchTab('results')" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">
+                    <i data-lucide="pie-chart" class="w-3.5 h-3.5"></i>
+                    <span>Live Results</span>
+                    <span id="total-votes-badge" class="ml-1 px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px] border border-blue-500/30">0</span>
+                </button>
+                <button onclick="toggleGithubModal()" class="ml-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+                    <i data-lucide="github" class="w-3.5 h-3.5 text-white"></i>
+                    <span class="hidden sm:inline">GH Sync</span>
+                    <span id="gh-status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-4xl mx-auto px-4 py-8 sm:px-6 sm:py-10 w-full flex-grow">
+
+        <!-- ================= VIEW 1: SURVEY FORM ================= -->
+        <div id="view-vote" class="glass-card rounded-2xl p-6 sm:p-10 shadow-2xl relative overflow-hidden transition-all duration-300">
+            
+            <!-- Progress Bar Header -->
+            <div class="mb-8">
+                <div class="flex justify-between items-center text-xs font-semibold text-slate-400 mb-2">
+                    <span>Survey Progress</span>
+                    <span id="progress-percent" class="text-blue-400 font-bold">0% Completed</span>
+                </div>
+                <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700/50">
+                    <div id="progress-bar" class="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300 w-0"></div>
+                </div>
+            </div>
+
+            <!-- Intro Header -->
+            <div class="mb-8 pb-6 border-b border-slate-800">
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">
+                    Cast Your Vote 🚀
+                </h2>
+                <p class="text-slate-300 text-sm sm:text-base leading-relaxed">
+                    Share your experience with AI tools and architecture. Your vote will immediately update the live community results!
+                </p>
+            </div>
+
+            <!-- Error Notification Alert -->
+            <div id="error-alert" class="hidden mb-6 p-4 rounded-xl bg-red-950/60 border border-red-500/50 text-red-200 text-sm flex items-start gap-3">
+                <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 shrink-0 mt-0.5"></i>
+                <div id="error-message">Please fill in all required fields before submitting.</div>
+            </div>
+
+            <!-- Survey Form -->
+            <form id="survey-form" class="space-y-8" onsubmit="handleFormSubmit(event)">
+
+                <!-- QUESTION 0: RESPONDENT NAME -->
+                <div class="space-y-3" id="q0-group">
+                    <label for="respondent-name" class="block text-base sm:text-lg font-semibold text-slate-100">
+                        Full Name <span class="text-red-400">*</span>
+                    </label>
+                    <input type="text" id="respondent-name" name="respondent_name" placeholder="e.g. Alex Rivera" required class="w-full px-4 py-3 rounded-xl bg-slate-950/80 border border-slate-700/80 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" oninput="updateProgress()">
+                </div>
+
+                <!-- QUESTION 1: AI Tools -->
+                <div class="space-y-4 pt-4 border-t border-slate-800/60" id="q1-group">
+                    <label class="block text-base sm:text-lg font-semibold text-slate-100 flex items-center justify-between">
+                        <span>1. Which AI tools are you currently using? <span class="text-red-400">*</span></span>
+                        <span class="text-xs font-normal text-slate-400">(Multi-select)</span>
+                    </label>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="ai_tools" value="ChatGPT" class="q1-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">ChatGPT (OpenAI)</span>
+                        </label>
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="ai_tools" value="Claude" class="q1-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">Claude (Anthropic)</span>
+                        </label>
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="ai_tools" value="GitHub Copilot" class="q1-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">GitHub Copilot</span>
+                        </label>
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="ai_tools" value="Cursor / Windsurf" class="q1-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">Cursor / Windsurf</span>
+                        </label>
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="ai_tools" value="Gemini" class="q1-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">Gemini (Google)</span>
+                        </label>
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="ai_tools" value="DeepSeek" class="q1-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">DeepSeek</span>
+                        </label>
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition sm:col-span-2">
+                            <input type="checkbox" name="ai_tools" value="None" id="q1-none" class="q1-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="handleNoneToggle(this)">
+                            <span class="ml-3 text-sm font-medium text-slate-200">None currently</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- QUESTION 2: Experience Level -->
+                <div class="space-y-4 pt-4 border-t border-slate-800/60" id="q2-group">
+                    <label class="block text-base sm:text-lg font-semibold text-slate-100">
+                        2. How are you currently using AI in system design activities? <span class="text-red-400">*</span>
+                    </label>
+
+                    <div class="space-y-3">
+                        <label class="flex items-start p-4 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="radio" name="experience_level" value="Exploring / Beginner" class="mt-1 w-4 h-4 text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <div class="ml-3">
+                                <span class="block text-sm font-bold text-slate-200">Exploring / Beginner</span>
+                                <span class="block text-xs text-slate-400">Not using it yet, or just experimenting with simple prompts.</span>
+                            </div>
+                        </label>
+                        <label class="flex items-start p-4 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="radio" name="experience_level" value="Occasional User" class="mt-1 w-4 h-4 text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <div class="ml-3">
+                                <span class="block text-sm font-bold text-slate-200">Occasional User</span>
+                                <span class="block text-xs text-slate-400">Using AI for light coding assistance, quick questions, or debugging.</span>
+                            </div>
+                        </label>
+                        <label class="flex items-start p-4 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="radio" name="experience_level" value="Regular User" class="mt-1 w-4 h-4 text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <div class="ml-3">
+                                <span class="block text-sm font-bold text-slate-200">Regular User</span>
+                                <span class="block text-xs text-slate-400">Frequently integrating AI into daily coding, documentation, or diagramming.</span>
+                            </div>
+                        </label>
+                        <label class="flex items-start p-4 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="radio" name="experience_level" value="Advanced User" class="mt-1 w-4 h-4 text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <div class="ml-3">
+                                <span class="block text-sm font-bold text-slate-200">Advanced User</span>
+                                <span class="block text-xs text-slate-400">Using specialized workflows, custom agents, or prompt engineering.</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- QUESTION 3: Topics of Interest -->
+                <div class="space-y-4 pt-4 border-t border-slate-800/60" id="q3-group">
+                    <label class="block text-base sm:text-lg font-semibold text-slate-100 flex items-center justify-between">
+                        <span>3. What would you like to learn about using AI for system architecture? <span class="text-red-400">*</span></span>
+                        <span class="text-xs font-normal text-slate-400">(Multi-select)</span>
+                    </label>
+
+                    <div class="space-y-3">
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="topics" value="System architecture design and diagrams" class="q3-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">System architecture design and diagrams (C4 models, Mermaid, etc.)</span>
+                        </label>
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="topics" value="Requirement analysis and technical documentation" class="q3-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">Requirement analysis & docs (PRDs, RFCs, user stories)</span>
+                        </label>
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="topics" value="Database design and API architecture" class="q3-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">Database design and API architecture (Schemas, REST/GraphQL)</span>
+                        </label>
+                        <label class="flex items-center p-3.5 rounded-xl border border-slate-700/70 bg-slate-800/40 hover:bg-slate-800 cursor-pointer transition">
+                            <input type="checkbox" name="topics" value="Code structure and technical implementation" class="q3-input w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-600 focus:ring-blue-500" onchange="updateProgress()">
+                            <span class="ml-3 text-sm font-medium text-slate-200">Code structure & technical implementation (Design patterns, code generation)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- QUESTION 4: Challenges -->
+                <div class="space-y-4 pt-4 border-t border-slate-800/60">
+                    <label for="challenges" class="block text-base sm:text-lg font-semibold text-slate-100 flex items-center justify-between">
+                        <span>4. Is there any specific challenge or scenario you'd like us to cover?</span>
+                        <span class="text-xs font-normal text-slate-400">(Optional)</span>
+                    </label>
+
+                    <textarea id="challenges" name="challenges" rows="3" placeholder="Describe your current bottlenecks or architectural questions..." class="w-full px-4 py-3 rounded-xl bg-slate-950/80 border border-slate-700/80 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"></textarea>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="pt-6 border-t border-slate-800/80">
+                    <button type="submit" class="w-full py-4 px-6 rounded-xl font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-lg shadow-blue-600/25 active:scale-[0.99] transition flex items-center justify-center gap-2 text-base">
+                        <span>Submit & View Live Results</span>
+                        <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- ================= VIEW 2: LIVE RESULTS DASHBOARD ================= -->
+        <div id="view-results" class="hidden space-y-8">
+            
+            <!-- Dashboard Stats Bar -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="glass-card p-5 rounded-2xl flex items-center gap-4">
+                    <div class="p-3 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30">
+                        <i data-lucide="users" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-extrabold text-white" id="stat-total-submissions">0</div>
+                        <div class="text-xs text-slate-400">Total Participants</div>
+                    </div>
+                </div>
+
+                <div class="glass-card p-5 rounded-2xl flex items-center gap-4">
+                    <div class="p-3 bg-indigo-500/20 text-indigo-400 rounded-xl border border-indigo-500/30">
+                        <i data-lucide="cpu" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-extrabold text-white" id="stat-top-tool">-</div>
+                        <div class="text-xs text-slate-400">Most Popular AI Tool</div>
+                    </div>
+                </div>
+
+                <div class="glass-card p-5 rounded-2xl flex items-center gap-4">
+                    <div class="p-3 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+                        <i data-lucide="sparkles" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-extrabold text-white" id="stat-top-topic">-</div>
+                        <div class="text-xs text-slate-400">Top Requested Topic</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Q1 Results: AI Tools Distribution -->
+            <div class="glass-card p-6 sm:p-8 rounded-2xl space-y-4">
+                <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i data-lucide="wrench" class="w-5 h-5 text-blue-400"></i>
+                        1. Active AI Tools Usage
+                    </h3>
+                    <span class="text-xs text-slate-400">Percentage of respondents using each tool</span>
+                </div>
+                <div id="chart-q1" class="space-y-4 pt-2">
+                    <!-- Dynamic chart injected here -->
+                </div>
+            </div>
+
+            <!-- Q2 Results: Experience Level -->
+            <div class="glass-card p-6 sm:p-8 rounded-2xl space-y-4">
+                <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i data-lucide="trending-up" class="w-5 h-5 text-indigo-400"></i>
+                        2. Experience Level Breakdown
+                    </h3>
+                    <span class="text-xs text-slate-400">Distribution of user proficiency</span>
+                </div>
+                <div id="chart-q2" class="space-y-4 pt-2">
+                    <!-- Dynamic chart injected here -->
+                </div>
+            </div>
+
+            <!-- Q3 Results: Topics of Interest -->
+            <div class="glass-card p-6 sm:p-8 rounded-2xl space-y-4">
+                <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i data-lucide="book-open" class="w-5 h-5 text-emerald-400"></i>
+                        3. Desired Learning Topics
+                    </h3>
+                    <span class="text-xs text-slate-400">Community demand per topic</span>
+                </div>
+                <div id="chart-q3" class="space-y-4 pt-2">
+                    <!-- Dynamic chart injected here -->
+                </div>
+            </div>
+
+            <!-- Q4 Feed: Real-World Scenarios & Challenges -->
+            <div class="glass-card p-6 sm:p-8 rounded-2xl space-y-4">
+                <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i data-lucide="message-square" class="w-5 h-5 text-amber-400"></i>
+                        4. Submitted Real-World Challenges & Feedback
+                    </h3>
+                    <span id="q4-count-badge" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300">0 responses</span>
+                </div>
+
+                <div id="q4-feed" class="space-y-3 pt-2 max-h-96 overflow-y-auto pr-1">
+                    <!-- Dynamic cards injected here -->
+                </div>
+            </div>
+
+            <!-- Dashboard Control Actions -->
+            <div class="flex flex-wrap justify-between items-center gap-3 pt-4">
+                <div class="flex items-center gap-2">
+                    <button onclick="switchTab('vote')" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-2 border border-slate-700">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        Add Another Vote
+                    </button>
+                    <button onclick="exportCSV()" class="px-4 py-2 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 text-xs font-semibold transition flex items-center gap-2 border border-emerald-500/30">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        Export CSV
+                    </button>
+                </div>
+
+                <button onclick="resetPollData()" class="px-4 py-2 rounded-xl bg-red-950/50 hover:bg-red-900/60 text-red-300 text-xs font-semibold transition flex items-center gap-2 border border-red-500/30">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    Reset Poll Data
+                </button>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- GITHUB CONFIGURATION MODAL -->
+    <div id="github-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+        <div class="glass-card max-w-lg w-full rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-700">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-slate-800 text-white rounded-xl border border-slate-700">
+                        <i data-lucide="github" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white">GitHub Repository Sync</h3>
+                        <p class="text-xs text-slate-400">Directly commit survey votes to your GitHub repo</p>
+                    </div>
+                </div>
+                <button onclick="toggleGithubModal()" class="text-slate-400 hover:text-white transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="text-xs text-slate-300 space-y-2 bg-slate-900/70 p-4 rounded-xl border border-slate-800">
+                <p class="font-semibold text-blue-400 flex items-center gap-1.5">
+                    <i data-lucide="info" class="w-4 h-4"></i> How GitHub Pages Storage Works:
+                </p>
+                <p class="leading-relaxed">
+                    GitHub Pages is a <strong>static site host</strong> without a backend database. To store responses in your repo from the browser, we use the <strong>GitHub REST API</strong> to automatically create a commit that updates <code class="bg-slate-800 px-1 py-0.5 rounded text-indigo-300">data/responses.json</code> whenever someone submits the form.
+                </p>
+            </div>
+
+            <form id="gh-config-form" class="space-y-4" onsubmit="saveGithubConfig(event)">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">GitHub Owner / Organization</label>
+                    <input type="text" id="gh-owner" placeholder="username-or-org" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Repository Name</label>
+                    <input type="text" id="gh-repo" placeholder="ai-survey-repo" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Target Path in Repo</label>
+                    <input type="text" id="gh-path" placeholder="data/responses.json" value="data/responses.json" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Personal Access Token (PAT)</label>
+                    <input type="password" id="gh-pat" placeholder="ghp_..." class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+                    <p class="text-[10px] text-slate-500 mt-1">Requires <code class="text-slate-400">contents:write</code> scope to commit files to the repository.</p>
+                </div>
+
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="toggleGithubModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500">Save Configuration</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <footer class="w-full border-t border-slate-800/60 py-6 bg-slate-950/40">
+        <div class="max-w-5xl mx-auto px-4 text-center text-xs text-slate-500">
+            &copy; 2026 AI System Design Community • GitHub Pages Polling Engine
+        </div>
+    </footer>
+
+    <script>
+        // Default initial dataset to populate dashboard instantly
+        const INITIAL_POLL_DATA = {
+            totalSubmissions: 42,
+            records: [
+                {
+                    name: "Sarah Chen",
+                    q1_tools: ["ChatGPT", "Claude", "GitHub Copilot"],
+                    q2_experience: "Regular User",
+                    q3_topics: ["System architecture design and diagrams", "Database design and API architecture"],
+                    q4_challenges: "How can we consistently generate accurate C4 diagrams and Mermaid schemas for microservice boundaries?",
+                    timestamp: "2026-11-04T10:15:00Z"
+                },
+                {
+                    name: "Marcus Vance",
+                    q1_tools: ["Cursor / Windsurf", "DeepSeek"],
+                    q2_experience: "Advanced User",
+                    q3_topics: ["Code structure and technical implementation"],
+                    q4_challenges: "Using Cursor or Windsurf on large enterprise legacy codebases with strict security boundaries.",
+                    timestamp: "2026-11-04T14:30:00Z"
+                }
+            ],
+            q1_tools: {
+                "ChatGPT": 36,
+                "Claude": 29,
+                "GitHub Copilot": 31,
+                "Cursor / Windsurf": 22,
+                "Gemini": 15,
+                "DeepSeek": 18,
+                "None": 2
+            },
+            q2_experience: {
+                "Exploring / Beginner": 6,
+                "Occasional User": 14,
+                "Regular User": 17,
+                "Advanced User": 5
+            },
+            q3_topics: {
+                "System architecture design and diagrams": 34,
+                "Requirement analysis and technical documentation": 21,
+                "Database design and API architecture": 28,
+                "Code structure and technical implementation": 25
+            }
+        };
+
+        let pollData = {};
+        let ghConfig = { owner: '', repo: '', path: 'data/responses.json', pat: '' };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadPollData();
+            loadGithubConfig();
+            lucide.createIcons();
+            updateProgress();
+        });
+
+        function loadGithubConfig() {
+            const stored = localStorage.getItem('ai_survey_gh_config');
+            if (stored) {
+                try {
+                    ghConfig = JSON.parse(stored);
+                    document.getElementById('gh-owner').value = ghConfig.owner || '';
+                    document.getElementById('gh-repo').value = ghConfig.repo || '';
+                    document.getElementById('gh-path').value = ghConfig.path || 'data/responses.json';
+                    document.getElementById('gh-pat').value = ghConfig.pat || '';
+                } catch(e) {}
+            }
+            updateGithubStatusDot();
+        }
+
+        function updateGithubStatusDot() {
+            const dot = document.getElementById('gh-status-dot');
+            if (ghConfig.owner && ghConfig.repo && ghConfig.pat) {
+                dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+            } else {
+                dot.className = "w-2 h-2 rounded-full bg-amber-400";
+            }
+        }
+
+        function toggleGithubModal() {
+            const modal = document.getElementById('github-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        function saveGithubConfig(e) {
+            e.preventDefault();
+            ghConfig = {
+                owner: document.getElementById('gh-owner').value.trim(),
+                repo: document.getElementById('gh-repo').value.trim(),
+                path: document.getElementById('gh-path').value.trim() || 'data/responses.json',
+                pat: document.getElementById('gh-pat').value.trim()
+            };
+            localStorage.setItem('ai_survey_gh_config', JSON.stringify(ghConfig));
+            updateGithubStatusDot();
+            toggleGithubModal();
+        }
+
+        function updateProgress() {
+            let answered = 0;
+            const nameVal = document.getElementById('respondent-name').value.trim();
+            if (nameVal.length > 0) answered++;
+            if (document.querySelectorAll('input[name="ai_tools"]:checked').length > 0) answered++;
+            if (document.querySelector('input[name="experience_level"]:checked')) answered++;
+            if (document.querySelectorAll('input[name="topics"]:checked').length > 0) answered++;
+
+            const percentage = Math.round((answered / 4) * 100);
+            document.getElementById('progress-bar').style.width = percentage + '%';
+            document.getElementById('progress-percent').innerText = percentage + '% Completed';
+        }
+
+        // Form Submit Handler
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            const errorAlert = document.getElementById('error-alert');
+            errorAlert.classList.add('hidden');
+
+            const respondentName = document.getElementById('respondent-name').value.trim();
+            const selectedTools = Array.from(document.querySelectorAll('input[name="ai_tools"]:checked')).map(el => el.value);
+            const expElement = document.querySelector('input[name="experience_level"]:checked');
+            const selectedExp = expElement ? expElement.value : null;
+            const selectedTopics = Array.from(document.querySelectorAll('input[name="topics"]:checked')).map(el => el.value);
+            const challengeText = document.getElementById('challenges').value.trim();
+
+            if (!respondentName) {
+                showError("Please enter your full name.");
+                return;
+            }
+            if (selectedTools.length === 0) {
+                showError("Please select at least one AI tool (or select 'None currently').");
+                return;
+            }
+            if (!selectedExp) {
+                showError("Please select your current experience level.");
+                return;
+            }
+            if (selectedTopics.length === 0) {
+                showError("Please select at least one topic of interest.");
+                return;
+            }
+
+            const newRecord = {
+                name: respondentName,
+                q1_tools: selectedTools,
+                q2_experience: selectedExp,
+                q3_topics: selectedTopics,
+                q4_challenges: challengeText,
+                timestamp: new Date().toISOString()
+            };
+
+            // Local state update
+            pollData.totalSubmissions += 1;
+            if (!pollData.records) pollData.records = [];
+            pollData.records.unshift(newRecord);
+
+            selectedTools.forEach(tool => {
+                pollData.q1_tools[tool] = (pollData.q1_tools[tool] || 0) + 1;
+            });
+            pollData.q2_experience[selectedExp] = (pollData.q2_experience[selectedExp] || 0) + 1;
+            selectedTopics.forEach(topic => {
+                pollData.q3_topics[topic] = (pollData.q3_topics[topic] || 0) + 1;
+            });
+
+            savePollData();
+
+            // Commit to GitHub if configured
+            if (ghConfig.owner && ghConfig.repo && ghConfig.pat) {
+                commitToGitHub(newRecord);
+            }
+
+            // Reset form
+            document.getElementById('survey-form').reset();
+            updateProgress();
+
+            // Switch to live results view
+            switchTab('results');
+        }
+
+        async function commitToGitHub(record) {
+            const url = `https://api.github.com/repos/${ghConfig.owner}/${ghConfig.repo}/contents/${ghConfig.path}`;
+            try {
+                let sha = null;
+                let existingRecords = [];
+
+                // Get existing file content & SHA
+                const getRes = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${ghConfig.pat}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+
+                if (getRes.ok) {
+                    const fileData = await getRes.json();
+                    sha = fileData.sha;
+                    const decoded = atob(fileData.content.replace(/\n/g, ''));
+                    existingRecords = JSON.parse(decoded);
+                }
+
+                existingRecords.push(record);
+                const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(existingRecords, null, 2))));
+
+                await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${ghConfig.pat}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/vnd.github.v3+json'
+                    },
+                    body: JSON.stringify({
+                        message: `Add survey response from ${record.name}`,
+                        content: updatedContent,
+                        sha: sha
+                    })
+                });
+            } catch (err) {
+                console.error("GitHub API commit error:", err);
+            }
+        }
+
+        function exportCSV() {
+            if (!pollData.records || pollData.records.length === 0) return;
+            const headers = ["Name", "AI Tools", "Experience", "Topics", "Challenges", "Timestamp"];
+            const rows = pollData.records.map(r => [
+                `"${r.name.replace(/"/g, '""')}"`,
+                `"${(r.q1_tools || []).join('; ')}"`,
+                `"${r.q2_experience}"`,
+                `"${(r.q3_topics || []).join('; ')}"`,
+                `"${(r.q4_challenges || '').replace(/"/g, '""')}"`,
+                `"${r.timestamp}"`
+            ]);
+
+            const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `survey_responses_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Render Q4 Feed with Respondent Name
+        function renderDashboard() {
+            // ... existing stats calculations ...
+            const total = pollData.totalSubmissions || 1;
+            document.getElementById('stat-total-submissions').innerText = pollData.totalSubmissions;
+            document.getElementById('total-votes-badge').innerText = pollData.totalSubmissions;
+
+            let topTool = '-';
+            let maxToolVotes = -1;
+            Object.entries(pollData.q1_tools).forEach(([tool, count]) => {
+                if (count > maxToolVotes) {
+                    maxToolVotes = count;
+                    topTool = tool;
+                }
+            });
+            document.getElementById('stat-top-tool').innerText = topTool;
+
+            let topTopic = '-';
+            let maxTopicVotes = -1;
+            Object.entries(pollData.q3_topics).forEach(([topic, count]) => {
+                if (count > maxTopicVotes) {
+                    maxTopicVotes = count;
+                    topTopic = topic;
+                }
+            });
+            document.getElementById('stat-top-topic').innerText = topTopic.length > 25 ? topTopic.substring(0, 22) + '...' : topTopic;
+
+            renderBarChart('chart-q1', pollData.q1_tools, total, 'bg-gradient-to-r from-blue-500 to-indigo-500');
+            renderBarChart('chart-q2', pollData.q2_experience, total, 'bg-gradient-to-r from-indigo-500 to-purple-500');
+            renderBarChart('chart-q3', pollData.q3_topics, total, 'bg-gradient-to-r from-emerald-500 to-teal-500');
+
+            // Render Q4 Feed
+            const feedContainer = document.getElementById('q4-feed');
+            const q4Badge = document.getElementById('q4-count-badge');
+
+            const recordsWithChallenges = (pollData.records || []).filter(r => r.q4_challenges && r.q4_challenges.trim().length > 0);
+            q4Badge.innerText = `${recordsWithChallenges.length} responses`;
+
+            if (recordsWithChallenges.length === 0) {
+                feedContainer.innerHTML = `<div class="text-sm text-slate-500 italic p-4 text-center">No challenges submitted yet.</div>`;
+            } else {
+                feedContainer.innerHTML = recordsWithChallenges.map(r => `
+                    <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 text-sm text-slate-200 space-y-2">
+                        <div class="flex justify-between items-center text-xs text-slate-400">
+                            <span class="font-bold text-blue-400 flex items-center gap-1.5">
+                                <i data-lucide="user" class="w-3.5 h-3.5"></i> ${escapeHtml(r.name || 'Anonymous')}
+                            </span>
+                            <span>${new Date(r.timestamp).toLocaleDateString()}</span>
+                        </div>
+                        <div class="leading-relaxed text-slate-300 flex items-start gap-2">
+                            <i data-lucide="quote" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+                            <div>${escapeHtml(r.q4_challenges)}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+<!-- ... existing code -->
